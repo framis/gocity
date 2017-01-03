@@ -1,0 +1,12 @@
+version: '2'
+services:
+  gocity:
+    build: .
+    volumes:
+      - .:/go/src/github.com/framis/gocity
+    environment:
+      GEONAMES_MAINFILE: FR.zip
+      ALGOLIA_APPID: XXX
+      ALGOLIA_APPSECRET: XXX
+      ALGOLIA_INDEXNAME: cities
+    command: ["go", "run", "gocity.go"]

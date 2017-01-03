@@ -1,9 +1,3 @@
-// TODO
-// 2. DRY populate functions (?)
-// 4. Dockerize local dev
-// 5. Index
-// 6. Test data
-
 package main
 
 import (
@@ -15,6 +9,8 @@ import (
 	"fmt"
 	"strconv"
 	"errors"
+	"github.com/framis/gocity/model"
+	"time"
 )
 
 type admin struct {
@@ -39,26 +35,8 @@ type postalCode struct {
 	admin1Code string
 }
 
-type city struct {
-	geonameId string
-	name string
-	alternateNames string
-	fClass string
-	fCode string
-	latitude float64
-	longitude float64
-	population int
-	country string
-	countryCode string
-	postalCode string
-	administrative string
-	administrativeCode string
-	administrative2 string
-	administrative2Code string
-}
-
 type cityDupCandidate struct {
-	city city
+	city model.City
 	hierarchy hierarchy
 }
 
@@ -72,7 +50,7 @@ type GeonameImporter struct {
 	hierarchyChildMap     	map[string]hierarchy
 	cityInChan       	chan([]string)
 	cityDupCandidates    	[]cityDupCandidate
-	cityOutChan           	chan city
+	cityOutChan           	chan model.City
 	recordErrChan    	chan error
 	filePath         	string
 }
@@ -98,13 +76,16 @@ func newDupError(URL string, record interface{}) *importError {
 func (e *importError) Error() string { return fmt.Sprintf("ImportError - File %s - record %s - %s", e.file, e.record, e.err) }
 
 
-func NewGeonameImporter(recordErrChan chan error) *GeonameImporter {
+func NewGeonameImporter(recordErrChan chan error, cityOutChan chan model.City) *GeonameImporter {
+
+	mainFile := viper.GetString("geonames.mainFile")
+
 	g := GeonameImporter{
 		recordErrChan: recordErrChan,
 		cityInChan: make(chan []string),
-		cityOutChan: make(chan city),
+		cityOutChan: cityOutChan,
 		cityDupCandidates: make([]cityDupCandidate, 0),
-		filePath: viper.GetString("download.geonameFile"),
+		filePath: viper.GetString("download.folder") + "/" + mainFile[0:len(mainFile)-4] + ".txt",
 	}
 	var wg sync.WaitGroup
 	wg.Add(5)
@@ -135,9 +116,9 @@ func NewGeonameImporter(recordErrChan chan error) *GeonameImporter {
 func (g *GeonameImporter) populateAdmin1() {
 	g.admin1Map = make(map[string]admin)
 	recordChan := make(chan([]string))
-	URL := viper.GetString("geonames.admin1URL")
+	URL :=  viper.GetString("geonames.baseURL") + viper.GetString("geonames.admin1File")
 
-	go csv.ReadRemoteCSV(URL, recordChan, g.recordErrChan)
+	go lib.ReadRemoteCSV(URL, recordChan, g.recordErrChan)
 	for record := range recordChan {
 		if len(record) < 2 {
 			g.recordErrChan <- newValidationError(URL, record)
@@ -150,9 +131,9 @@ func (g *GeonameImporter) populateAdmin1() {
 func (g *GeonameImporter) populateAdmin2() {
 	g.admin2Map = make(map[string]admin)
 	recordChan := make(chan([]string))
-	URL := viper.GetString("geonames.admin2URL")
+	URL := viper.GetString("geonames.baseURL") + viper.GetString("geonames.admin2File")
 
-	go csv.ReadRemoteCSV(URL, recordChan, g.recordErrChan)
+	go lib.ReadRemoteCSV(URL, recordChan, g.recordErrChan)
 	for record := range recordChan {
 		isInvalid := len(record) < 2
 		if isInvalid {
@@ -166,9 +147,9 @@ func (g *GeonameImporter) populateAdmin2() {
 func (g *GeonameImporter) populateCountry() {
 	g.countryMap = make(map[string]country)
 	recordChan := make(chan([]string))
-	URL := viper.GetString("geonames.countryURL")
+	URL := viper.GetString("geonames.baseURL") + viper.GetString("geonames.countryFile")
 
-	go csv.ReadRemoteCSV(URL, recordChan, g.recordErrChan)
+	go lib.ReadRemoteCSV(URL, recordChan, g.recordErrChan)
 	for record := range recordChan {
 		isInvalid := len(record) < 5 || strings.HasPrefix(record[0], "#")
 		if isInvalid {
@@ -182,10 +163,13 @@ func (g *GeonameImporter) populateCountry() {
 func (g *GeonameImporter) populatePostalCode() {
 	g.postalCodeMap = make(map[string]postalCode)
 	recordChan := make(chan([]string))
-	csv.DownloadAndUnzip(viper.GetString("geonames.postalCodeURL"), viper.GetString("download.zipFolder"))
 
-	filePath := viper.GetString("download.postalCodeFile")
-	go csv.ReadLocalCSV(filePath, recordChan, g.recordErrChan)
+	zipFile := viper.GetString("geonames.zipFile")
+
+	lib.DownloadAndUnzip(viper.GetString("geonames.zipBaseURL") + zipFile, viper.GetString("download.zipFolder"))
+
+	filePath := viper.GetString("download.zipFolder") + "/" + zipFile[0:len(zipFile)-4] + ".txt"
+	go lib.ReadLocalCSV(filePath, recordChan, g.recordErrChan)
 
 	for record := range recordChan {
 		isInvalid := len(record) < 5
@@ -214,10 +198,13 @@ func (g *GeonameImporter) populateHierarchy() {
 	g.hierarchyParentMap = make(map[string]hierarchy)
 	g.isACityMap = make(map[string]bool)
 	recordChan := make(chan([]string))
-	csv.DownloadAndUnzip(viper.GetString("geonames.hierarchyURL"), viper.GetString("download.folder"))
 
-	filePath := viper.GetString("download.hierarchyFile")
-	go csv.ReadLocalCSV(filePath, recordChan, g.recordErrChan)
+	hierarchyFile := viper.GetString("geonames.hierarchyFile")
+	lib.DownloadAndUnzip(viper.GetString("geonames.baseURL") + hierarchyFile,
+		viper.GetString("download.folder"))
+
+	filePath := viper.GetString("download.folder") + "/" + hierarchyFile[0:len(hierarchyFile)-4] + ".txt"
+	go lib.ReadLocalCSV(filePath, recordChan, g.recordErrChan)
 
 	for record := range recordChan {
 		isInvalid := len(record) < 2
@@ -233,7 +220,7 @@ func (g *GeonameImporter) populateHierarchy() {
 }
 
 func (g *GeonameImporter) importCities() {
-	go csv.ReadLocalCSV(g.filePath, g.cityInChan, g.recordErrChan)
+	go lib.ReadLocalCSV(g.filePath, g.cityInChan, g.recordErrChan)
 	for record := range g.cityInChan {
 		if !g.isValid(record) {
 			continue
@@ -259,7 +246,7 @@ func (g *GeonameImporter) isValid(record []string) bool {
 	return valid
 }
 
-func (g *GeonameImporter) mapToCity(record []string) city {
+func (g *GeonameImporter) mapToCity(record []string) model.City {
 	latitude, err := strconv.ParseFloat(record[4], 64)
 	if err != nil {
 		g.recordErrChan <- newParseError(g.filePath, record, err)
@@ -273,70 +260,70 @@ func (g *GeonameImporter) mapToCity(record []string) city {
 		g.recordErrChan <- newParseError(g.filePath, record, err)
 	}
 
-	return city{
-		geonameId: record[0],
-		name: record[1],
-		alternateNames: record[3],
-		latitude: latitude,
-		longitude: longitude,
-		fClass: record[6],
-		fCode: record[7],
-		countryCode: record[8],
-		administrativeCode: record[10],
-		administrative2Code: record[11],
-		population: population,
+	return model.City{
+		GeonameId: record[0],
+		Name: record[1],
+		AlternateNames: record[3],
+		Latitude: latitude,
+		Longitude: longitude,
+		FClass: record[6],
+		FCode: record[7],
+		CountryCode: record[8],
+		AdministrativeCode: record[10],
+		Administrative2Code: record[11],
+		Population: population,
 	}
 }
 
-func (g *GeonameImporter) filter(city city) bool {
+func (g *GeonameImporter) filter(city model.City) bool {
 
 	// TODO validate that population=0 is reliable
-	if city.population == 0 {
+	if city.Population == 0 {
 		return false
 	}
 
 	ignoreFCodes := map[string]bool{ "PPLH": true, "PPLX": true }
-	if _, present := ignoreFCodes[city.fCode]; present {
+	if _, present := ignoreFCodes[city.FCode]; present {
 		return false
 	}
 
-	if city.fClass != viper.GetString("geonames.cityFClass"){
+	if city.FClass != viper.GetString("geonames.cityFClass"){
 		return false
 	}
 	return true
 }
 
-func (g *GeonameImporter) enrich(city *city) {
+func (g *GeonameImporter) enrich(city *model.City) {
 
-	if country, present := g.countryMap[city.countryCode]; present {
-		city.country = country.name
+	if country, present := g.countryMap[city.CountryCode]; present {
+		city.Country = country.name
 	}
 
-	admin1Key := fmt.Sprintf("%s.%s", city.countryCode, city.administrativeCode)
+	admin1Key := fmt.Sprintf("%s.%s", city.CountryCode, city.AdministrativeCode)
 	if administrative, present := g.admin1Map[admin1Key]; present {
-		city.administrative = administrative.name
+		city.Administrative = administrative.name
 	}
 
-	admin2Key := fmt.Sprintf("%s.%s.%s", city.countryCode,
-		city.administrativeCode, city.administrative2Code)
+	admin2Key := fmt.Sprintf("%s.%s.%s", city.CountryCode,
+		city.AdministrativeCode, city.Administrative2Code)
 	if administrative2, present := g.admin2Map[admin2Key]; present {
-		city.administrative2 = administrative2.name
+		city.Administrative2 = administrative2.name
 	}
 
-	postalCodeKey := fmt.Sprintf("%s.%s.%s", city.countryCode,
-		city.name, city.administrativeCode)
+	postalCodeKey := fmt.Sprintf("%s.%s.%s", city.CountryCode,
+		city.Name, city.AdministrativeCode)
 
 	if postalCode, present := g.postalCodeMap[postalCodeKey]; present {
-		city.postalCode = postalCode.postalCode
+		city.PostalCode = postalCode.postalCode
 	}
 }
 
 // We need both parent and children cities to dedup
-func (g *GeonameImporter) isDupCandidate(city city) (bool, cityDupCandidate) {
-	if _, present := g.hierarchyParentMap[city.geonameId]; present {
-		g.isACityMap[city.geonameId] = true
+func (g *GeonameImporter) isDupCandidate(city model.City) (bool, cityDupCandidate) {
+	if _, present := g.hierarchyParentMap[city.GeonameId]; present {
+		g.isACityMap[city.GeonameId] = true
 	}
-	if hierarchy, present := g.hierarchyChildMap[city.geonameId]; present {
+	if hierarchy, present := g.hierarchyChildMap[city.GeonameId]; present {
 		return true, cityDupCandidate{city, hierarchy}
 	}
 	return false, cityDupCandidate{}
@@ -345,7 +332,6 @@ func (g *GeonameImporter) isDupCandidate(city city) (bool, cityDupCandidate) {
 // Some cities, such as Marseille in France, have duplicates such as Marseille 01.
 // This method uses hierarchy.txt to take the higher hierarchy city only
 func (g *GeonameImporter) handleDupCandidates() {
-
 	for _, cityDupCandidate := range g.cityDupCandidates {
 		parentId := cityDupCandidate.hierarchy.parent
 		isParentACity, _ := g.isACityMap[parentId]
@@ -358,17 +344,12 @@ func (g *GeonameImporter) handleDupCandidates() {
 	}
 }
 
-func (g *GeonameImporter) pipe() {
-	count := 0
-	for city := range g.cityOutChan {
-		fmt.Println(city)
-	}
-	fmt.Println(count)
+func (g *GeonameImporter) teardown() {
+	close(g.cityOutChan)
 }
 
 func main() {
 	config.Init()
-
 	recordErrChan := make(chan error)
 	go func() {
 		for recordErr := range recordErrChan {
@@ -379,16 +360,34 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		csv.DownloadAndUnzip(viper.GetString("geonames.geonameURL"), viper.GetString("download.folder"))
+		lib.DownloadAndUnzip(viper.GetString("geonames.baseURL") + viper.GetString("geonames.mainFile"),
+			viper.GetString("download.folder"))
+		wg.Done()
+	}()
+	wg.Wait()
+
+	cityOutChan := make(chan model.City)
+	g := NewGeonameImporter(recordErrChan, cityOutChan)
+
+	wg.Add(1)
+	go func() {
+		indexer := lib.NewAlgoliaIndexer(
+			viper.GetString("algolia.appId"),
+			viper.GetString("algolia.appSecret"),
+			viper.GetString("algolia.indexName"),
+			cityOutChan)
+		indexer.Index()
 		wg.Done()
 	}()
 
-	g := NewGeonameImporter(recordErrChan)
-
+	wg.Add(1)
 	go func() {
-		g.pipe()
+		g.importCities()
+		g.handleDupCandidates()
+		time.Sleep(30*1000)
+		close(cityOutChan)
+		wg.Done()
 	}()
-	g.importCities()
-	g.handleDupCandidates()
+
 	wg.Wait()
 }

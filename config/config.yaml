@@ -1,14 +1,17 @@
 geonames:
-  admin1URL: "http://download.geonames.org/export/dump/admin1CodesASCII.txt"
-  admin2URL: "http://download.geonames.org/export/dump/admin2Codes.txt"
-  countryURL: "http://download.geonames.org/export/dump/countryInfo.txt"
-  postalCodeURL: "http://download.geonames.org/export/zip/allCountries.zip"
-  hierarchyURL: "http://download.geonames.org/export/dump/hierarchy.zip"
-  geonameURL: "http://download.geonames.org/export/dump/FR.zip"
-  cityFClass: "P"
+  baseURL: http://download.geonames.org/export/dump/
+  zipBaseURL: http://download.geonames.org/export/zip/
+  zipFile: allCountries.zip
+  admin1File: admin1CodesASCII.txt
+  admin2File: admin2Codes.txt
+  countryFile: countryInfo.txt
+  hierarchyFile: hierarchy.zip
+  mainFile: CN.zip
+  cityFClass: P
 download:
-  folder: "download"
-  zipFolder: "download/zip"
-  postalCodeFile: "download/zip/allCountries.txt"
-  hierarchyFile: "download/hierarchy.txt"
-  geonameFile: "download/FR.txt"
+  folder: download
+  zipFolder: download/zip
+algolia:
+  appId: XXX
+  appSecret: XXX
+  indexName: cities

@@ -1,4 +1,4 @@
-package csv
+package lib
 
 import (
 	"encoding/csv"
@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"archive/zip"
 	"bufio"
+	"github.com/mitchellh/ioprogress"
 )
 
 type CsvError struct {
@@ -102,7 +103,12 @@ func DownloadAndUnzip(url string, dest string) {
 	}
 	defer response.Body.Close()
 
-	n, err := io.Copy(output, response.Body)
+	progressR := &ioprogress.Reader{
+		Reader: response.Body,
+		Size:   response.ContentLength,
+	}
+
+	n, err := io.Copy(output, progressR)
 	if err != nil {
 		log.Fatal("Error while downloading", url, "-", err)
 		return
