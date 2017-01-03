@@ -1,0 +1,14 @@
+geonames:
+  admin1URL: "http://download.geonames.org/export/dump/admin1CodesASCII.txt"
+  admin2URL: "http://download.geonames.org/export/dump/admin2Codes.txt"
+  countryURL: "http://download.geonames.org/export/dump/countryInfo.txt"
+  postalCodeURL: "http://download.geonames.org/export/zip/allCountries.zip"
+  hierarchyURL: "http://download.geonames.org/export/dump/hierarchy.zip"
+  geonameURL: "http://download.geonames.org/export/dump/FR.zip"
+  cityFClass: "P"
+download:
+  folder: "download"
+  zipFolder: "download/zip"
+  postalCodeFile: "download/zip/allCountries.txt"
+  hierarchyFile: "download/hierarchy.txt"
+  geonameFile: "download/FR.txt"
